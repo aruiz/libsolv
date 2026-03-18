@@ -100,11 +100,22 @@ compress_buf(const unsigned char *in, unsigned int in_len,
   unsigned int oo = 0;		/* out-offset */
   unsigned int io = 0;		/* in-offset */
 #define HS (65536)
-  Ref htab[HS];
-  Ref hnext[BLOCK_SIZE];
+  /* Use static arrays + generation counter to avoid clearing 256KB
+   * of htab/hnext per call. Stale htab entries are detected via
+   * htab_gen[i] != gen. hnext needs no clearing because chain
+   * entries are always written (from validated htab reads) before
+   * being followed. */
+  static Ref htab[HS];
+  static Ref hnext[BLOCK_SIZE];
+  static unsigned short htab_gen[HS];
+  static unsigned short gen;
+  Ref htab_val;
   unsigned int litofs = 0;
-  memset(htab, -1, sizeof (htab));
-  memset(hnext, -1, sizeof (hnext));
+  if (++gen == 0)
+    {
+      memset(htab_gen, 0, sizeof(htab_gen));
+      gen = 1;
+    }
   if (in_len > BLOCK_SIZE)
     return 0;			/* Hey! */
   while (io + 2 < in_len)
@@ -115,9 +126,11 @@ compress_buf(const unsigned char *in, unsigned int in_len,
       unsigned int try, mlen, mofs, tries;
       hval = (hval ^ (hval << 5) ^ (hval >> 5)) - hval * 5;
       hval = hval & (HS - 1);
-      try = htab[hval];
-      hnext[io] = htab[hval];
+      htab_val = htab_gen[hval] == gen ? htab[hval] : (Ref)-1;
+      try = htab_val;
+      hnext[io] = htab_val;
       htab[hval] = io;
+      htab_gen[hval] = gen;
       mlen = 0;
       mofs = 0;
 
@@ -180,7 +193,7 @@ compress_buf(const unsigned char *in, unsigned int in_len,
 	      unsigned int try;
 	      hval = (hval ^ (hval << 5) ^ (hval >> 5)) - hval * 5;
 	      hval = hval & (HS - 1);
-	      try = htab[hval];
+	      try = htab_gen[hval] == gen ? htab[hval] : (Ref)-1;
 	      if (try != (Ref)-1 && in[try] == in[io + 1] && in[try + 1] == in[io + 2])
 		{
 		  unsigned int this_len = 2;
@@ -318,8 +331,9 @@ compress_buf(const unsigned char *in, unsigned int in_len,
 		    in[io] | in[io + 1] << 8 | in[io + 2] << 16;
 		  hval = (hval ^ (hval << 5) ^ (hval >> 5)) - hval * 5;
 		  hval = hval & (HS - 1);
-		  hnext[io] = htab[hval];
+		  hnext[io] = htab_gen[hval] == gen ? htab[hval] : (Ref)-1;
 		  htab[hval] = io;
+		  htab_gen[hval] = gen;
 		}
 	      io++;
 	    }
