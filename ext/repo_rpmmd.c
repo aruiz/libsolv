@@ -281,28 +281,17 @@ langtag(struct parsedata *pd, Id tag, const char *language)
 }
 
 /*
- * makeevr_atts
- * parse 'epoch', 'ver' and 'rel', return evr Id
- *
+ * makeevr_parts
+ * build evr Id from pre-parsed epoch, ver, rel strings
  */
 
 static Id
-makeevr_atts(Pool *pool, struct parsedata *pd, const char **atts)
+makeevr_parts(Pool *pool, struct parsedata *pd, const char *e, const char *v, const char *r)
 {
-  const char *e, *v, *r, *v2;
+  const char *v2;
   char *c, *space;
-  int l;
+  int l, el = 0, vl = 0, rl = 0;
 
-  e = v = r = 0;
-  for (; *atts; atts += 2)
-    {
-      if (!strcmp(*atts, "epoch"))
-	e = atts[1];
-      else if (!strcmp(*atts, "ver"))
-	v = atts[1];
-      else if (!strcmp(*atts, "rel"))
-	r = atts[1];
-    }
   if (e && (!*e || !strcmp(e, "0")))
     e = 0;
   if (v && !e)
@@ -314,28 +303,37 @@ makeevr_atts(Pool *pool, struct parsedata *pd, const char **atts)
     }
   l = 1;
   if (e)
-    l += strlen(e) + 1;
+    {
+      el = strlen(e);
+      l += el + 1;
+    }
   if (v)
-    l += strlen(v);
+    {
+      vl = strlen(v);
+      l += vl;
+    }
   if (r)
-    l += strlen(r) + 1;
+    {
+      rl = strlen(r);
+      l += rl + 1;
+    }
   c = space = solv_xmlparser_contentspace(&pd->xmlp, l);
   if (e)
     {
-      strcpy(c, e);
-      c += strlen(c);
+      memcpy(c, e, el);
+      c += el;
       *c++ = ':';
     }
   if (v)
     {
-      strcpy(c, v);
-      c += strlen(c);
+      memcpy(c, v, vl);
+      c += vl;
     }
   if (r)
     {
       *c++ = '-';
-      strcpy(c, r);
-      c += strlen(c);
+      memcpy(c, r, rl);
+      c += rl;
     }
   *c = 0;
   if (!*space)
@@ -344,6 +342,28 @@ makeevr_atts(Pool *pool, struct parsedata *pd, const char **atts)
   fprintf(stderr, "evr: %s\n", space);
 #endif
   return pool_str2id(pool, space, 1);
+}
+
+/*
+ * makeevr_atts
+ * parse 'epoch', 'ver' and 'rel', return evr Id
+ */
+
+static Id
+makeevr_atts(Pool *pool, struct parsedata *pd, const char **atts)
+{
+  const char *e, *v, *r;
+  e = v = r = 0;
+  for (; *atts; atts += 2)
+    {
+      if (!strcmp(*atts, "epoch"))
+	e = atts[1];
+      else if (!strcmp(*atts, "ver"))
+	v = atts[1];
+      else if (!strcmp(*atts, "rel"))
+	r = atts[1];
+    }
+  return makeevr_parts(pool, pd, e, v, r);
 }
 
 
