@@ -22,6 +22,7 @@
 
 #include "util.h"
 #include "queue.h"
+#include "hash.h"
 #include "solv_xmlparser.h"
 
 static inline void
@@ -106,6 +107,7 @@ start_element(void *userData, const char *name, const char **atts)
   struct solv_xmlparser_element *elements;
   Id *elementhelper;
   struct solv_xmlparser_element *el;
+  Hashval hm, h, hh;
   int i, oldstate;
 
   if (xmlp->unknowncnt)
@@ -116,9 +118,18 @@ start_element(void *userData, const char *name, const char **atts)
   elementhelper = xmlp->elementhelper;
   elements = xmlp->elements;
   oldstate = xmlp->state;
-  for (i = elementhelper[xmlp->nelements + oldstate]; i; i = elementhelper[i - 1])
-    if (!strcmp(elements[i - 1].element, (char *)name))
-      break;
+  hm = xmlp->elementhashmask;
+  h = strhash_cont((const char *)name, (Hashval)oldstate * 37) & hm;
+  hh = HASHCHAIN_START;
+  for (;;)
+    {
+      i = elementhelper[h];
+      if (!i)
+	break;
+      if (elements[i - 1].fromstate == oldstate && !strcmp(elements[i - 1].element, (const char *)name))
+	break;
+      h = HASHCHAIN_NEXT(h, hh, hm);
+    }
   if (!i)
     {
 #if 0
@@ -177,33 +188,30 @@ solv_xmlparser_init(struct solv_xmlparser *xmlp,
     void (*startelement)(struct solv_xmlparser *, int state, const char *name, const char **atts),
     void (*endelement)(struct solv_xmlparser *, int state, char *content))
 {
-  int i, nstates, nelements;
+  int i, nelements;
   struct solv_xmlparser_element *el;
   Id *elementhelper;
+  Hashval hashmask, h, hh;
 
   memset(xmlp, 0, sizeof(*xmlp));
-  nstates = 0;
   nelements = 0;
   for (el = elements; el->element; el++)
-    {
-      nelements++;
-      if (el->fromstate > nstates)
-	nstates = el->fromstate;
-      if (el->tostate > nstates)
-	nstates = el->tostate;
-    }
-  nstates++;
+    nelements++;
 
   xmlp->elements = elements;
   xmlp->nelements = nelements;
-  elementhelper = solv_calloc(nelements + nstates, sizeof(Id));
-  for (i = nelements - 1; i >= 0; i--)
+  hashmask = mkmask(nelements);
+  elementhelper = solv_calloc(hashmask + 1, sizeof(Id));
+  for (i = 0; i < nelements; i++)
     {
-      int fromstate = elements[i].fromstate;
-      elementhelper[i] = elementhelper[nelements + fromstate];
-      elementhelper[nelements + fromstate] = i + 1;
+      h = strhash_cont(elements[i].element, (Hashval)elements[i].fromstate * 37) & hashmask;
+      hh = HASHCHAIN_START;
+      while (elementhelper[h])
+	h = HASHCHAIN_NEXT(h, hh, hashmask);
+      elementhelper[h] = i + 1;
     }
   xmlp->elementhelper = elementhelper;
+  xmlp->elementhashmask = hashmask;
   queue_init(&xmlp->elementq);
   xmlp->acontent = 256;
   xmlp->content = solv_malloc(xmlp->acontent);
