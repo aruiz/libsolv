@@ -100,6 +100,9 @@ compress_buf(const unsigned char *in, unsigned int in_len,
   unsigned int oo = 0;		/* out-offset */
   unsigned int io = 0;		/* in-offset */
 #define HS (65536)
+#define CHAIN_LIMIT 6
+#define HASH3(buf, pos) \
+  (((unsigned int)((buf)[(pos)] | ((buf)[(pos)+1] << 8) | ((buf)[(pos)+2] << 16)) * 0x9E3779B1U) >> 16)
   /* Use static arrays + generation counter to avoid clearing 256KB
    * of htab/hnext per call. Stale htab entries are detected via
    * htab_gen[i] != gen. hnext needs no clearing because chain
@@ -122,10 +125,8 @@ compress_buf(const unsigned char *in, unsigned int in_len,
     {
       /* Search for a match of the string starting at IN, we have at
          least three characters.  */
-      unsigned int hval = in[io] | in[io + 1] << 8 | in[io + 2] << 16;
+      unsigned int hval = HASH3(in, io);
       unsigned int try, mlen, mofs, tries;
-      hval = (hval ^ (hval << 5) ^ (hval >> 5)) - hval * 5;
-      hval = hval & (HS - 1);
       htab_val = htab_gen[hval] == gen ? htab[hval] : (Ref)-1;
       try = htab_val;
       hnext[io] = htab_val;
@@ -134,7 +135,7 @@ compress_buf(const unsigned char *in, unsigned int in_len,
       mlen = 0;
       mofs = 0;
 
-      for (tries = 0; try != (Ref)-1 && tries < 12; tries++, try = hnext[try])
+      for (tries = 0; try != (Ref)-1 && tries < CHAIN_LIMIT; tries++, try = hnext[try])
         {
 	  if (in[try] == in[io] && in[try + 1] == in[io + 1])
 	    {
@@ -143,7 +144,7 @@ compress_buf(const unsigned char *in, unsigned int in_len,
 	      break;
 	    }
 	}
-      for (; try != (Ref)-1 && tries < 12; tries++, try = hnext[try])
+      for (; try != (Ref)-1 && tries < CHAIN_LIMIT; tries++, try = hnext[try])
 	{
 	  /* assert(io + mlen < in_len); */
 	  /* Try a match starting from [io] with the strings at [try].
@@ -154,7 +155,9 @@ compress_buf(const unsigned char *in, unsigned int in_len,
 	    {
 	      /* Found a longer match */
 	      mlen++;
-	      /* Now try extending the match by more characters.  */
+	      /* Extend match, comparing 8 bytes at a time */
+	      while (io + mlen + 8 <= in_len && !memcmp(in + try + mlen, in + io + mlen, 8))
+		mlen += 8;
 	      while (io + mlen < in_len && in[try + mlen] == in[io + mlen])
 		mlen++;
 	      mofs = (io - try) - 1;
@@ -188,15 +191,14 @@ compress_buf(const unsigned char *in, unsigned int in_len,
 	     maximum).  */
 	  if (mlen && mlen < (2048 + 5) && io + 3 < in_len)
 	    {
-	      unsigned int hval =
-		in[io + 1] | in[io + 2] << 8 | in[io + 3] << 16;
+	      unsigned int hval = HASH3(in, io + 1);
 	      unsigned int try;
-	      hval = (hval ^ (hval << 5) ^ (hval >> 5)) - hval * 5;
-	      hval = hval & (HS - 1);
 	      try = htab_gen[hval] == gen ? htab[hval] : (Ref)-1;
 	      if (try != (Ref)-1 && in[try] == in[io + 1] && in[try + 1] == in[io + 2])
 		{
 		  unsigned int this_len = 2;
+		  while (io + 1 + this_len + 8 <= in_len && !memcmp(in + try + this_len, in + io + 1 + this_len, 8))
+		    this_len += 8;
 		  while (io + 1 + this_len < in_len && in[try + this_len] == in[io + 1 + this_len])
 		    this_len++;
 		  if (this_len >= mlen)
@@ -327,10 +329,7 @@ compress_buf(const unsigned char *in, unsigned int in_len,
 	    {
 	      if (io + 2 < in_len)
 		{
-		  unsigned int hval =
-		    in[io] | in[io + 1] << 8 | in[io + 2] << 16;
-		  hval = (hval ^ (hval << 5) ^ (hval >> 5)) - hval * 5;
-		  hval = hval & (HS - 1);
+		  unsigned int hval = HASH3(in, io);
 		  hnext[io] = htab_gen[hval] == gen ? htab[hval] : (Ref)-1;
 		  htab[hval] = io;
 		  htab_gen[hval] = gen;
