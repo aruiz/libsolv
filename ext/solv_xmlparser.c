@@ -335,7 +335,7 @@ solv_xmlparser_lineno(struct solv_xmlparser *xmlp)
 int
 solv_xmlparser_parse(struct solv_xmlparser *xmlp, FILE *fp)
 {
-  char buf[8192];
+  char buf[32768];
   int l, ret = SOLV_XMLPARSER_OK;
 
   xmlp->state = 0;
