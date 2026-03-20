@@ -24,6 +24,7 @@
 
 enum state {
   STATE_START,
+  STATE_METADATA,
 
   STATE_SOLVABLE,
 
@@ -125,7 +126,7 @@ static struct solv_xmlparser_element stateswitches[] = {
   /** tags for different package data, just ignore them **/
   { STATE_START,       "patterns",        STATE_START,    0 },
   { STATE_START,       "products",        STATE_START,    0 },
-  { STATE_START,       "metadata",        STATE_START,    0 },
+  { STATE_START,       "metadata",        STATE_METADATA, 0 },
   { STATE_START,       "otherdata",       STATE_START,    0 },
   { STATE_START,       "filelists",       STATE_START,    0 },
   { STATE_START,       "diskusagedata",   STATE_START,    0 },
@@ -135,6 +136,11 @@ static struct solv_xmlparser_element stateswitches[] = {
   { STATE_START,       "pattern",         STATE_SOLVABLE, 0 },
   { STATE_START,       "patch",           STATE_SOLVABLE, 0 },
   { STATE_START,       "package",         STATE_SOLVABLE, 0 },
+
+  { STATE_METADATA,    "product",         STATE_SOLVABLE, 0 },
+  { STATE_METADATA,    "pattern",         STATE_SOLVABLE, 0 },
+  { STATE_METADATA,    "patch",           STATE_SOLVABLE, 0 },
+  { STATE_METADATA,    "package",         STATE_SOLVABLE, 0 },
 
   { STATE_SOLVABLE,    "format",          STATE_SOLVABLE, 0 },
 
@@ -628,6 +634,37 @@ fill_cshash_from_new_solvables(struct parsedata *pd)
 }
 
 /*-----------------------------------------------*/
+
+static void
+rpmmd_presize(struct parsedata *pd, int numpkgs)
+{
+  Pool *pool = pd->pool;
+  Repo *repo = pd->repo;
+  Repodata *data = pd->data;
+
+  /* heuristics from Fedora Rawhide profiling:
+   * ~75K packages -> ~400K strings, ~300K rels, ~18 dep ids/pkg */
+  int est_strings = numpkgs * 6;
+  int est_strbytes = numpkgs * 120;
+  int est_rels = numpkgs * 4;
+  int est_ids = numpkgs * 18;
+
+  stringpool_reserve(&pool->ss, est_strings, est_strbytes);
+  stringpool_resize_hash(&pool->ss, est_strings);
+
+  pool_reserve_rels(pool, est_rels);
+
+  pool->solvables = solv_extend_resize(pool->solvables,
+      pool->nsolvables + numpkgs, sizeof(Solvable), 255);
+
+  repo->idarraydata = solv_extend_resize(repo->idarraydata,
+      repo->idarraysize + est_ids, sizeof(Id), 4095);
+
+  repodata_extend_block(data, repo->end ? repo->end : pool->nsolvables,
+      numpkgs);
+}
+
+/*-----------------------------------------------*/
 /* XML callbacks */
 
 /*
@@ -644,11 +681,22 @@ startElement(struct solv_xmlparser *xmlp, int state, const char *name, const cha
   const char *str;
   const char *pkgid;
 
-  if (!s && state != STATE_SOLVABLE)
+  if (!s && state != STATE_SOLVABLE && state != STATE_METADATA)
     return;
 
   switch(state)
     {
+    case STATE_METADATA:
+      {
+	const char *npstr = solv_xmlparser_find_attr("packages", atts);
+	if (npstr)
+	  {
+	    int np = atoi(npstr);
+	    if (np > 0)
+	      rpmmd_presize(pd, np);
+	  }
+      }
+      break;
     case STATE_SOLVABLE:
       pd->kind = 0;
       if (name[2] == 't' && name[3] == 't')

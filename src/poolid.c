@@ -106,6 +106,15 @@ pool_resize_rels_hash(Pool *pool, int numnew)
     }
 }
 
+void
+pool_reserve_rels(Pool *pool, int numnew)
+{
+  if (numnew <= 0)
+    return;
+  pool->rels = solv_extend_resize(pool->rels, pool->nrels + numnew, sizeof(Reldep), REL_BLOCK);
+  pool_resize_rels_hash(pool, numnew);
+}
+
 Id
 pool_rel2id(Pool *pool, Id name, Id evr, int flags, int create)
 {

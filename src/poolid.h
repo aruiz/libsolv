@@ -44,6 +44,7 @@ extern void pool_freeidhashes(Pool *pool);
 
 extern void pool_resize_rels_hash(Pool *pool, int numnew);	/* internal */
 extern void pool_init_rels(Pool *pool);				/* internal */
+extern void pool_reserve_rels(Pool *pool, int numnew);
 
 #ifdef __cplusplus
 }

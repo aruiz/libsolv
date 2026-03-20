@@ -114,6 +114,7 @@ SOLV_1.0 {
 		pool_setloadcallback;
 		pool_setnamespacecallback;
 		pool_setvendorclasses;
+		pool_reserve_rels;
 		pool_shrink_rels;
 		pool_shrink_strings;
 		pool_solvable2str;
@@ -434,6 +435,8 @@ SOLV_1.0 {
 		stringpool_freehash;
 		stringpool_init;
 		stringpool_init_empty;
+		stringpool_reserve;
+		stringpool_resize_hash;
 		stringpool_shrink;
 		stringpool_str2id;
 		stringpool_strn2id;
