@@ -29,36 +29,60 @@ typedef Id *Hashtable;
 #define HASHCHAIN_START 7
 #define HASHCHAIN_NEXT(h, hh, mask) (((h) + (hh)++) & (mask))
 
-/* very simple hash function
- * string -> hash
- */
+/* FNV-1a string hash */
+
+#define STRHASH_INIT 2166136261u
+#define STRHASH_PRIME 16777619u
+
 static inline Hashval
 strhash(const char *str)
 {
-  Hashval r = 0;
+  Hashval h = STRHASH_INIT;
   unsigned int c;
   while ((c = *(const unsigned char *)str++) != 0)
-    r += (r << 3) + c;
-  return r;
+    {
+      h ^= c;
+      h *= STRHASH_PRIME;
+    }
+  return h;
 }
 
 static inline Hashval
-strnhash(const char *str, unsigned len)
+strnhash(const char *str, unsigned int len)
 {
-  Hashval r = 0;
-  unsigned int c;
-  while (len-- && (c = *(const unsigned char *)str++) != 0)
-    r += (r << 3) + c;
-  return r;
+  const unsigned char *p = (const unsigned char *)str;
+  Hashval h = STRHASH_INIT;
+  while (len >= 8)
+    {
+      h ^= p[0]; h *= STRHASH_PRIME;
+      h ^= p[1]; h *= STRHASH_PRIME;
+      h ^= p[2]; h *= STRHASH_PRIME;
+      h ^= p[3]; h *= STRHASH_PRIME;
+      h ^= p[4]; h *= STRHASH_PRIME;
+      h ^= p[5]; h *= STRHASH_PRIME;
+      h ^= p[6]; h *= STRHASH_PRIME;
+      h ^= p[7]; h *= STRHASH_PRIME;
+      p += 8;
+      len -= 8;
+    }
+  while (len--)
+    {
+      h ^= *p++;
+      h *= STRHASH_PRIME;
+    }
+  return h;
 }
 
 static inline Hashval
-strhash_cont(const char *str, Hashval r)
+strhash_cont(const char *str, Hashval h)
 {
   unsigned int c;
   while ((c = *(const unsigned char *)str++) != 0)
-    r += (r << 3) + c;
-  return r;
+    {
+      h ^= c;
+      h *= STRHASH_PRIME;
+    }
+  return h;
 }
 
 
